@@ -29,6 +29,9 @@
    runs, and `--pass-env NAME` imports one explicit variable for an evaluation
    that needs a credential. Variables that alter process loaders, startup,
    npm, Node, proxy, certificate, telemetry, or DevBar state are refused.
+6. `install.sh` links the runner from this checkout without replacing an
+   unrelated command, runs the npm smoke test, and can install the separate
+   evaluation prefix with `--with-evals`.
 
 ## Proof and boundary
 

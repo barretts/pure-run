@@ -5,6 +5,40 @@ removes the caller's environment, uses a new private home, and keeps
 `~/.local/bin` and `~/.devbar/bin` out of `PATH`. The home is removed when the
 command exits. The current directory and project files remain available.
 
+## Install
+
+From this local checkout on macOS, with Homebrew Node/npm/npx already present:
+
+```sh
+cd ~/code/pure-run
+./install.sh
+```
+
+The installer links `pure` into `~/.local/bin`, checks command resolution, and
+runs a real npm smoke test. It is safe to run again. It refuses to overwrite a
+different existing command and does not edit shell startup files. On this Mac,
+`~/.local/bin` is already on `PATH`; `command -v pure` should show the link.
+Keep this checkout in place while using the link. The installer can also link
+into another command directory with `--bin-dir`.
+
+To install the separate agent evaluation prefix too, use:
+
+```sh
+./install.sh --with-evals
+```
+
+That option uses `~/code/eval-agents/install.sh`, installs under
+`~/opt/pure-evals/eval-agents`, and runs its doctor. The agent installer needs
+the existing gateway credentials and CA files and snapshots Claude auth from
+DevBar at install time. Its staging build can take several minutes. Supply
+`--eval-source /absolute/path` if the eval installer checkout is elsewhere.
+
+`--bin-dir /absolute/path` selects a different command directory. Add that
+directory to your shell `PATH` yourself if you choose one.
+
+The local runner source has no published remote or package registry entry;
+`./install.sh` is the installable method from this checkout.
+
 Examples:
 
 ```sh

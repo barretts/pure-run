@@ -10,17 +10,24 @@ import tempfile
 from pathlib import Path
 
 
-PATH = "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-TOOLS = ("node", "npm", "npx", "pnpm", "yarn")
-EVAL_BIN = Path("/Users/bsonntag/opt/pure-evals/eval-agents/bin")
-EVAL_TOOLS = {"claude": "claude-eval", "opencode": "opencode-eval", "opencode-v2": "opencode-v2", "crush": "crush-eval"}
-BLOCKED_ENV = re.compile(r"(?i)(^PATH$|^HOME$|^ZDOTDIR$|^TMPDIR$|^XDG_|^NPM_CONFIG_|^NODE_|^DYLD_|^LD_|^PYTHONPATH$|^BASH_ENV$|^ENV$|^RUBYOPT$|^PERL5OPT$|^GIT_CONFIG_|PROXY|CERT|TELEMETRY|HOOK|DEVBAR)")
-ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-
 def fail(message):
     print(f"pure: {message}", file=sys.stderr)
     raise SystemExit(2)
+
+
+def select_path():
+    for prefix in ("/opt/homebrew", "/usr/local"):
+        if all((Path(prefix) / "bin" / name).exists() for name in ("node", "npm", "npx")):
+            return f"{prefix}/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    fail("a direct Homebrew Node/npm/npx install is required")
+
+
+PATH = select_path()
+TOOLS = ("node", "npm", "npx", "pnpm", "yarn")
+EVAL_BIN = Path.home() / "opt/pure-evals/eval-agents/bin"
+EVAL_TOOLS = {"claude": "claude-eval", "opencode": "opencode-eval", "opencode-v2": "opencode-v2", "crush": "crush-eval"}
+BLOCKED_ENV = re.compile(r"(?i)(^PATH$|^HOME$|^ZDOTDIR$|^TMPDIR$|^XDG_|^NPM_CONFIG_|^NODE_|^DYLD_|^LD_|^PYTHONPATH$|^BASH_ENV$|^ENV$|^RUBYOPT$|^PERL5OPT$|^GIT_CONFIG_|PROXY|CERT|TELEMETRY|HOOK|DEVBAR)")
+ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def parse(argv):
