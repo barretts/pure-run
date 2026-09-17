@@ -39,3 +39,6 @@ evaluation. `pure eval NAME` uses the separate installed prefix at
 Homebrew Node and npm, and starts with its own application profiles. The
 installer snapshots gateway credentials and CA files at install time. `pure`
 does not inherit DevBar or AI Suite settings at runtime.
+Claude's global enterprise managed settings still apply to its binary, as
+reported by the evaluation installer's doctor. Live provider inference was
+not part of the isolation smoke checks.

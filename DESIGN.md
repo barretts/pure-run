@@ -44,3 +44,21 @@ scripts or dependencies can still make external calls or invoke absolute
 executables. A fully clean evaluation must inspect those project inputs and
 the agent's own configuration as well. The separate evaluation installer has
 its own doctor and offline runtime tests for the installed agent binaries.
+
+## Verification on 2026-09-17
+
+- `tests/smoke.sh` passed with a real `npm test` and child `npm`/`npx` calls.
+- An interactive `pure shell` resolved Node tools to Homebrew and removed its
+  temporary home after exit.
+- The separate evaluation prefix installed successfully with
+  `node_bin=/opt/homebrew/bin/node` in its manifest.
+- All four `pure eval NAME --version` commands passed. The separate prefix's
+  doctor passed under `pure`.
+- The offline runtime suite passed under `pure` for OpenCode v1, OpenCode v2,
+  and Crush, including mock inference, project inputs, shell and MCP child
+  environments, and Crush's HTTPS CA snapshot.
+
+Live provider inference was not run. Claude's global enterprise managed
+settings still apply to its binary on this Mac; the installer doctor reports
+this. These are application-level limits of the installed agents, outside the
+DevBar command and environment isolation supplied by `pure`.
