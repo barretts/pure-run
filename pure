@@ -1,0 +1,162 @@
+#!/usr/bin/python3
+"""Run a command with a fresh home, minimal environment, and unwrapped tools."""
+
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+PATH = "/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+TOOLS = ("node", "npm", "npx", "pnpm", "yarn")
+EVAL_BIN = Path("/Users/bsonntag/opt/pure-evals/eval-agents/bin")
+EVAL_TOOLS = {"claude": "claude-eval", "opencode": "opencode-eval", "opencode-v2": "opencode-v2", "crush": "crush-eval"}
+BLOCKED_ENV = re.compile(r"(?i)(^PATH$|^HOME$|^ZDOTDIR$|^TMPDIR$|^XDG_|^NPM_CONFIG_|^NODE_|^DYLD_|^LD_|^PYTHONPATH$|^BASH_ENV$|^ENV$|^RUBYOPT$|^PERL5OPT$|^GIT_CONFIG_|PROXY|CERT|TELEMETRY|HOOK|DEVBAR)")
+ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def fail(message):
+    print(f"pure: {message}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def parse(argv):
+    home = None
+    passed = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--":
+            return home, passed, argv[i + 1 :]
+        if arg in ("--home", "--pass-env"):
+            if i + 1 >= len(argv):
+                fail(f"{arg} needs a value")
+            value = argv[i + 1]
+            if arg == "--home":
+                home = value
+            else:
+                passed.append(value)
+            i += 2
+            continue
+        if arg in ("-h", "--help"):
+            print("usage: pure [--home DIRECTORY] [--pass-env NAME] [--] COMMAND [ARG ...]\n"
+                  "       pure [--home DIRECTORY] shell\n"
+                  "       pure eval {claude|opencode|opencode-v2|crush} [ARG ...]\n"
+                  "       pure inspect\n\n"
+                  "Each run gets a fresh private home by default. shell opens zsh without startup files.\n"
+                  "--home selects a separate persistent profile; --pass-env imports one named variable.")
+            raise SystemExit(0)
+        if arg.startswith("-"):
+            fail(f"unknown option {arg}; put command options after --")
+        return home, passed, argv[i:]
+    return home, passed, []
+
+
+def verify_tools():
+    for tool in TOOLS:
+        found = shutil.which(tool, path=PATH)
+        if not found:
+            if tool in ("node", "npm", "npx"):
+                fail(f"missing clean {tool} in {PATH}")
+            continue
+        real = Path(found).resolve()
+        if ".devbar" in real.parts or ".devbar" in Path(found).parts:
+            fail(f"{tool} resolves into DevBar: {real}")
+
+
+def prepare_home(value):
+    if value is None:
+        return Path(tempfile.mkdtemp(prefix="pure-")), True
+    home = Path(value).expanduser().resolve()
+    real_home = Path(os.environ.get("HOME", str(Path.home()))).resolve()
+    if home == real_home or ".devbar" in home.parts:
+        fail("--home must be a separate directory outside DevBar")
+    home.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return home, False
+
+
+def clean_env(home, passed):
+    dirs = ("tmp", "xdg/config", "xdg/cache", "xdg/data", "xdg/state", "npm/cache", "npm/prefix", "pnpm", "yarn/cache", "corepack")
+    for name in dirs:
+        (home / name).mkdir(mode=0o700, parents=True, exist_ok=True)
+    userconfig = home / "npm/user.npmrc"
+    globalconfig = home / "npm/global.npmrc"
+    userconfig.touch(mode=0o600, exist_ok=True)
+    globalconfig.touch(mode=0o600, exist_ok=True)
+    env = {
+        "HOME": str(home),
+        "PATH": PATH,
+        "USER": os.environ.get("USER", ""),
+        "LOGNAME": os.environ.get("LOGNAME", ""),
+        "SHELL": "/bin/zsh",
+        "TERM": os.environ.get("TERM", "xterm-256color"),
+        "LANG": os.environ.get("LANG", "en_US.UTF-8"),
+        "TMPDIR": str(home / "tmp") + "/",
+        "ZDOTDIR": str(home),
+        "XDG_CONFIG_HOME": str(home / "xdg/config"),
+        "XDG_CACHE_HOME": str(home / "xdg/cache"),
+        "XDG_DATA_HOME": str(home / "xdg/data"),
+        "XDG_STATE_HOME": str(home / "xdg/state"),
+        "NPM_CONFIG_USERCONFIG": str(userconfig),
+        "NPM_CONFIG_GLOBALCONFIG": str(globalconfig),
+        "NPM_CONFIG_CACHE": str(home / "npm/cache"),
+        "NPM_CONFIG_PREFIX": str(home / "npm/prefix"),
+        "NPM_CONFIG_UPDATE_NOTIFIER": "false",
+        "NPM_CONFIG_AUDIT": "false",
+        "NPM_CONFIG_FUND": "false",
+        "PNPM_HOME": str(home / "pnpm"),
+        "YARN_CACHE_FOLDER": str(home / "yarn/cache"),
+        "COREPACK_HOME": str(home / "corepack"),
+        "HOMEBREW_NO_AUTO_UPDATE": "1",
+    }
+    for name in passed:
+        if not ENV_NAME.fullmatch(name) or BLOCKED_ENV.search(name):
+            fail(f"cannot import {name}; it could undo isolation")
+        if name not in os.environ:
+            fail(f"{name} is not set in the caller")
+        env[name] = os.environ[name]
+    return env
+
+
+def main():
+    home_arg, passed, command = parse(sys.argv[1:])
+    if not command:
+        fail("give a command, shell, or inspect")
+    verify_tools()
+    home, temporary = prepare_home(home_arg)
+    try:
+        env = clean_env(home, passed)
+        if command == ["inspect"]:
+            print(f"home: {home}")
+            print(f"PATH: {PATH}")
+            for tool in TOOLS:
+                found = shutil.which(tool, path=PATH)
+                if found:
+                    print(f"{tool}: {found} -> {Path(found).resolve()}")
+            print("environment names: " + ", ".join(sorted(env)))
+            return 0
+        if command == ["shell"]:
+            command = ["/bin/zsh", "-f", "-i"]
+        if command[0] == "eval":
+            if len(command) < 2 or command[1] not in EVAL_TOOLS:
+                fail("eval needs claude, opencode, opencode-v2, or crush")
+            node_shim = EVAL_BIN / "node"
+            if not node_shim.is_file() or ".devbar" in node_shim.read_text(errors="replace"):
+                fail("the private evaluation Node shim is missing or points at DevBar")
+            command = [str(EVAL_BIN / EVAL_TOOLS[command[1]]), *command[2:]]
+        executable = shutil.which(command[0], path=PATH) if "/" not in command[0] else command[0]
+        if not executable:
+            fail(f"command not found in clean PATH: {command[0]}")
+        if ".devbar" in Path(executable).resolve().parts:
+            fail(f"refusing DevBar executable: {executable}")
+        return subprocess.call(command, env=env)
+    finally:
+        if temporary:
+            shutil.rmtree(home, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
